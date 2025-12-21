@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use gpui::*;
 use gpui_component::*;
 
-use crate::ui::app::MyApp;
+use crate::ui::{app::MyApp, player_size::PlayerSize};
 use reqwest_client;
 // mod service;
 mod components;
@@ -13,18 +13,21 @@ actions!([Quit, About]);
 
 #[tokio::main]
 async fn main() {
+    ffmpeg_next::init().unwrap();
+
+    let http = reqwest_client::ReqwestClient::user_agent(
+        format!("Picargo/{}", env!("CARGO_PKG_VERSION")).as_str(),
+    )
+    .unwrap();
+
     let app = Application::new().with_assets(gpui_component_assets::Assets);
 
     app.run(move |cx| {
         // This must be called before using any GPUI Component features.
         gpui_component::init(cx);
-
         init_theme(cx);
 
-        let http = reqwest_client::ReqwestClient::user_agent(
-            format!("Picargo/{}", env!("CARGO_PKG_VERSION")).as_str(),
-        )
-        .unwrap();
+        let size_entity = cx.new(|_cx| PlayerSize::new());
 
         cx.set_http_client(Arc::new(http));
         cx.open_window(
@@ -42,7 +45,7 @@ async fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| MyApp::new(cx));
+                let view = cx.new(|cx| MyApp::new(cx, size_entity));
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )

@@ -1,5 +1,5 @@
 [package]
-name = "ez_cut"
+name = "eazy_cut"
 version = "0.1.0"
 edition = "2024"
 
@@ -31,3 +31,6 @@ reqwest.workspace = true
 
 reqwest_client = { path = "crates/reqwest_client" }
 serde_json.workspace = true
+smallvec = "1.15.1"
+image = "0.25.9"
+ffmpeg-next = "8.0.0"
