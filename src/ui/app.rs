@@ -9,7 +9,6 @@ use crate::{
 };
 
 pub struct MyApp {
-    size: Entity<PlayerSize>,
     title_bar: Entity<AppTitleBar>,
     player: Player,
     pub frame: Arc<Vec<u8>>,
@@ -22,7 +21,6 @@ impl MyApp {
         let frame: Arc<Vec<u8>> = Arc::new(vec![0, 0, 0, 0]);
 
         Self {
-            size: size_entity.clone(),
             title_bar,
             player: Player::new(size_entity),
             frame,
@@ -70,7 +68,7 @@ impl Render for MyApp {
                             .items_center()
                             .size_full()
                             .debug_blue()
-                            .child(self.player.view()),
+                            .child(self.player.view(window)),
                     )
                     .child(
                         // control zone
