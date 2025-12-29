@@ -49,6 +49,10 @@ impl Render for AppTitleBar {
         let is_client_decorated = matches!(window.window_decorations(), Decorations::Client { .. });
         let state = window.use_state(cx, |_, _| TitleBarState { should_move: false });
 
+        let is_windows = cfg!(target_os = "windows");
+        let is_linux = cfg!(target_os = "linux");
+        let is_macos = cfg!(target_os = "macos");
+
         div()
             .id("title-bar")
             .flex()
@@ -61,10 +65,10 @@ impl Render for AppTitleBar {
             .border_b_1()
             .border_color(cx.theme().title_bar_border)
             .bg(cx.theme().title_bar)
-            .when(cfg!(target_os = "linux"), |this| {
+            .when(is_linux, |this| {
                 this.on_double_click(|_, window, _| window.zoom_window())
             })
-            .when(cfg!(target_os = "macos"), |this| {
+            .when(is_macos, |this| {
                 this.on_double_click(|_, window, _| window.titlebar_double_click())
             })
             .on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
@@ -96,26 +100,29 @@ impl Render for AppTitleBar {
                     .justify_between()
                     .flex_shrink_0()
                     .flex_1()
-                    .child(self.app_menu.clone()), // .when(cfg!(target_os = "windows"), |this| {
-                                                   //     this.window_control_area(gpui::WindowControlArea::Min)
-                                                   // }),
+                    .when(is_windows, |div| div.child(self.app_menu.clone())),
+                // .when(cfg!(target_os = "windows"), |this| {
+                //     this.window_control_area(gpui::WindowControlArea::Min)
+                // }),
             )
-            .child(
-                h_flex()
-                    .id("window-controls")
-                    .items_center()
-                    .flex_shrink_0()
-                    .h_full()
-                    .child(ControlIcon::Minimize)
-                    .child(if window.is_maximized() {
-                        ControlIcon::Restore
-                    } else {
-                        ControlIcon::Maximize
-                    })
-                    .child(ControlIcon::Close {
-                        on_close_window: None,
-                    }),
-            )
+            .when(is_windows, |div| {
+                div.child(
+                    h_flex()
+                        .id("window-controls")
+                        .items_center()
+                        .flex_shrink_0()
+                        .h_full()
+                        .child(ControlIcon::Minimize)
+                        .child(if window.is_maximized() {
+                            ControlIcon::Restore
+                        } else {
+                            ControlIcon::Maximize
+                        })
+                        .child(ControlIcon::Close {
+                            on_close_window: None,
+                        }),
+                )
+            })
     }
 }
 
