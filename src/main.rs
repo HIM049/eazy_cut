@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use gpui::*;
 use gpui_component::*;
 
-use crate::ui::{about::AboutView, app::MyApp, player::player_size::PlayerSize};
+use crate::ui::{about::AboutView, app::MyApp, player::size::PlayerSize};
 use reqwest_client;
 mod components;
 mod ui;

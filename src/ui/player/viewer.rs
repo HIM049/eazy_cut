@@ -6,7 +6,7 @@ use gpui::{
 };
 use gpui_component::PixelsExt;
 
-use crate::ui::player::player_size::PlayerSize;
+use crate::ui::player::size::PlayerSize;
 
 pub struct Viewer {
     size: Entity<PlayerSize>,

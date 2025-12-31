@@ -21,7 +21,7 @@ use ringbuf::{
 
 use crate::ui::{
     app::MyApp,
-    player::{frame::FrameImage, player_size::PlayerSize, utils::generate_image_fallback},
+    player::{frame::FrameImage, size::PlayerSize, utils::generate_image_fallback},
 };
 
 #[derive(Debug)]
@@ -39,6 +39,8 @@ pub struct VideoDecoder {
     decoder: Option<decoder::Video>,
     code_parms: codec::Parameters,
     time_base: Option<Rational>,
+    frames: i64,
+    duration: i64,
 
     producer: Option<HeapProd<FrameImage>>,
     size: Entity<PlayerSize>,
@@ -57,6 +59,8 @@ impl VideoDecoder {
             decoder: None,
             code_parms: codec::Parameters::new(),
             time_base: None,
+            frames: 0,
+            duration: 0,
 
             producer: None,
             size: size_entity,
@@ -84,6 +88,13 @@ impl VideoDecoder {
         self.time_base
     }
 
+    pub fn get_duration(&self) -> Option<i64> {
+        if self.duration == 0 {
+            return None;
+        }
+        Some(self.duration)
+    }
+
     /// open a video file
     pub fn open(&mut self, cx: &mut Context<MyApp>, path: PathBuf) -> anyhow::Result<()> {
         let i = ffmpeg_next::format::input(&path)?;
@@ -108,11 +119,15 @@ impl VideoDecoder {
         // get sample rate and length of video frams
         let frame_rate = stream.avg_frame_rate();
         let frames = stream.frames();
+        let duration = stream.duration();
         // get orignal video size
         let orignal_width = decoder.width();
         let orignal_height = decoder.height();
 
-        println!("DEBUG: frame rate: {}, frames: {}", frame_rate, frames);
+        println!(
+            "DEBUG: frame rate: {}, duration: {} frames: {}",
+            frame_rate, duration, frames
+        );
 
         self.video_stream_ix = stream.index();
         self.audio_stream_ix = audio.index();
@@ -120,6 +135,8 @@ impl VideoDecoder {
         self.decoder = Some(decoder);
         self.code_parms = parmters;
         self.time_base = Some(time_base);
+        self.frames = frames;
+        self.duration = duration;
 
         self.size.update(cx, |p, _| {
             p.set_orignal((orignal_width, orignal_height));
@@ -180,7 +197,7 @@ impl VideoDecoder {
                             continue;
                         }
                         DecoderEvent::Seek(t) => {
-                            let ts = (1_000_000 as f32 * t) as i64;
+                            let ts = (ffmpeg_next::sys::AV_TIME_BASE as f32 * t) as i64;
                             if let Err(e) = input.seek(ts, ..ts) {
                                 println!("DEBUG: failed when seek: {}", e);
                                 continue;

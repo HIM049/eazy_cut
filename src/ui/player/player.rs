@@ -12,7 +12,7 @@ use crate::ui::{
     player::{
         ffmpeg::{DecoderEvent, VideoDecoder},
         frame::{FrameAction, FrameImage},
-        player_size::PlayerSize,
+        size::PlayerSize,
         utils::generate_image_fallback,
         viewer::Viewer,
     },
@@ -96,6 +96,28 @@ impl Player {
 
     pub fn get_state(&self) -> PlayState {
         self.state
+    }
+
+    pub fn get_current_playtime(&self) -> f32 {
+        if let Some(start_time) = self.start_time {
+            start_time.elapsed().as_secs_f32() + self.played_time.unwrap_or(0.0)
+        } else {
+            self.played_time.unwrap_or(0.0)
+        }
+    }
+
+    pub fn get_progress(&self) -> Option<f32> {
+        let Some(duration) = self.decoder.get_duration() else {
+            return None;
+        };
+        let Some(timebase) = self.decoder.get_timebase() else {
+            return None;
+        };
+        if duration.is_negative() {
+            return None;
+        }
+        let d_sec = (duration as f64 / timebase.denominator() as f64) as f32;
+        Some(self.get_current_playtime() / d_sec)
     }
 
     fn pause_timer(&mut self) {
