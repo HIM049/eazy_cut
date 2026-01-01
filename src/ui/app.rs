@@ -19,6 +19,7 @@ pub struct MyApp {
     title_bar: Entity<AppTitleBar>,
     size: Entity<PlayerSize>,
     player: Player,
+    selection_range: (Option<f32>, Option<f32>),
 }
 
 impl MyApp {
@@ -29,6 +30,7 @@ impl MyApp {
             title_bar,
             size: size_entity.clone(),
             player: Player::new(size_entity),
+            selection_range: (None, None),
         }
     }
 
@@ -104,12 +106,14 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                 .w_full()
                 // .debug_pink()
                 .child(
-                    Timeline::new("process", this.play_percent()).on_click(move |pct, cx| {
-                        weak.update(cx, |this, _| {
-                            this.player.set_playtime(|_, dur| dur * pct);
-                        })
-                        .unwrap();
-                    }),
+                    Timeline::new("process", this.play_percent(), this.selection_range).on_click(
+                        move |pct, cx| {
+                            weak.update(cx, |this, _| {
+                                this.player.set_playtime(|_, dur| dur * pct);
+                            })
+                            .unwrap();
+                        },
+                    ),
                 ),
         )
         .child(
@@ -151,6 +155,7 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                 .when(play_state != PlayState::Stopped, |this| {
                     this.child(Button::new("stop").child("Stop").on_click(cx.listener(
                         |this, _, _, cx| {
+                            this.selection_range = (None, None);
                             this.new_player();
                             cx.notify()
                         },
@@ -164,6 +169,18 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                     .child(Button::new("plus").child("+10s").on_click(cx.listener(
                         |this, _, _, cx| {
                             this.player.set_playtime(|now, _| now + 10.);
+                            cx.notify();
+                        },
+                    )))
+                    .child(Button::new("a").child("Point A").on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.selection_range.0 = Some(this.play_percent());
+                            cx.notify();
+                        },
+                    )))
+                    .child(Button::new("b").child("Point B").on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.selection_range.1 = Some(this.play_percent());
                             cx.notify();
                         },
                     )))

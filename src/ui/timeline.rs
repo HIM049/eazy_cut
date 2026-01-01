@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use gpui::{
     AbsoluteLength, App, BorderStyle, Bounds, Corners, DefiniteLength, Element, ElementId,
-    IntoElement, LayoutId, Length, MouseDownEvent, Path, Pixels, Point, Size, Style, point, px,
-    quad, relative, rgb,
+    IntoElement, LayoutId, Length, MouseButton, MouseDownEvent, Path, Pixels, Point, Size, Style,
+    point, px, quad, relative, rgb, rgba,
 };
 
 pub struct Timeline {
@@ -11,15 +11,19 @@ pub struct Timeline {
     percent: f32,
     origin_point: Point<Pixels>,
     on_click: Option<Arc<Box<dyn Fn(f32, &mut App) + 'static>>>,
+    range_start: Option<f32>,
+    range_end: Option<f32>,
 }
 
 impl Timeline {
-    pub fn new(id: impl Into<ElementId>, percent: f32) -> Self {
+    pub fn new(id: impl Into<ElementId>, percent: f32, range: (Option<f32>, Option<f32>)) -> Self {
         Self {
             id: id.into(),
             percent: percent,
             origin_point: point(px(0.), px(0.)),
             on_click: None,
+            range_start: range.0,
+            range_end: range.1,
         }
     }
 
@@ -85,6 +89,8 @@ impl Element for Timeline {
         window: &mut gpui::Window,
         _: &mut gpui::App,
     ) {
+        let scale = window.scale_factor();
+
         // timeline base
         window.paint_quad(quad(
             Bounds {
@@ -101,8 +107,30 @@ impl Element for Timeline {
             BorderStyle::default(),
         ));
 
+        // selected range
+        if let Some(start) = self.range_start {
+            let point_a = (bounds.size.width * start).round();
+            if let Some(end) = self.range_end {
+                let point_b = (bounds.size.width * end).round();
+
+                window.paint_quad(quad(
+                    Bounds {
+                        origin: point(point_a, self.origin_point.y - px(10.)),
+                        size: Size {
+                            width: point_b - point_a,
+                            height: px(30.),
+                        },
+                    },
+                    Corners::default(),
+                    rgba(0xffd55f66),
+                    px(1.),
+                    rgb(0xffd55f),
+                    BorderStyle::default(),
+                ));
+            }
+        }
+
         // triangle size
-        let scale = window.scale_factor();
         let head_size = px(5.0 / scale);
 
         let width = px(1.0 / scale);
@@ -137,7 +165,7 @@ impl Element for Timeline {
 
         let on_click = self.on_click.clone();
         window.on_mouse_event(move |e: &MouseDownEvent, phase, _, cx| {
-            if phase.bubble() && bounds.contains(&e.position) {
+            if phase.bubble() && e.button == MouseButton::Left && bounds.contains(&e.position) {
                 let percent = e.position.x / bounds.size.width;
                 if let Some(handler) = on_click.as_ref() {
                     (handler)(percent, cx);
