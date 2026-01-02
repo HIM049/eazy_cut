@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{path::PathBuf, sync::Arc, time::Instant};
 
 use gpui::{Context, Entity, RenderImage, Window};
 use ringbuf::{
@@ -59,6 +59,14 @@ impl Player {
                 "D:/Videos/Records/Apex Legends 2024.05.04 - 18.07.10.04.DVR.mp4".into(),
             )
             .unwrap();
+    }
+
+    pub fn path(&self) -> Option<PathBuf> {
+        self.decoder.path()
+    }
+
+    pub fn video_stream_ix(&self) -> usize {
+        self.decoder.video_stream_ix()
     }
 
     pub fn start_play(&mut self, cx: &mut Context<MyApp>) {

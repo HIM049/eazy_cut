@@ -7,6 +7,7 @@ use gpui_component::{ActiveTheme, StyledExt, button::Button};
 use crate::{
     components::app_title_bar::AppTitleBar,
     ui::{
+        output::output::output,
         player::{
             player::{PlayState, Player},
             size::PlayerSize,
@@ -49,6 +50,18 @@ impl MyApp {
 
     fn play_percent(&self) -> f32 {
         self.player.play_percentage().unwrap_or(0.)
+    }
+
+    fn get_sec_range(&self) -> Option<(f32, f32)> {
+        if self.selection_range.0.is_some() && self.selection_range.1.is_some() {
+            if let Some(dur) = self.player.duration_sec() {
+                return Some((
+                    self.selection_range.0.unwrap() * dur,
+                    self.selection_range.1.unwrap() * dur,
+                ));
+            }
+        }
+        None
     }
 }
 
@@ -184,7 +197,22 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                             cx.notify();
                         },
                     )))
-                }),
+                })
+                .when(
+                    this.selection_range.0.is_some() && this.selection_range.1.is_some(),
+                    |this| {
+                        this.child(Button::new("out").child("Output").on_click(cx.listener(
+                            |this, _, _, cx| {
+                                output(
+                                    this.player.path().unwrap(),
+                                    this.player.video_stream_ix(),
+                                    this.get_sec_range().unwrap(),
+                                );
+                                cx.notify();
+                            },
+                        )))
+                    },
+                ),
         )
         .into_any_element()
 }

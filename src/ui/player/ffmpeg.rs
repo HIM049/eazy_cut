@@ -33,6 +33,7 @@ pub enum DecoderEvent {
 }
 
 pub struct VideoDecoder {
+    path: Option<PathBuf>,
     input: Option<context::Input>,
     video_stream_ix: usize,
     audio_stream_ix: usize,
@@ -53,6 +54,7 @@ impl VideoDecoder {
     /// Create a new Decoder
     pub fn new(size_entity: Entity<PlayerSize>) -> Self {
         Self {
+            path: None,
             input: None,
             video_stream_ix: 0,
             audio_stream_ix: 0,
@@ -95,8 +97,17 @@ impl VideoDecoder {
         Some(self.duration)
     }
 
+    pub fn path(&self) -> Option<PathBuf> {
+        self.path.clone()
+    }
+
+    pub fn video_stream_ix(&self) -> usize {
+        self.video_stream_ix
+    }
+
     /// open a video file
     pub fn open(&mut self, cx: &mut Context<MyApp>, path: PathBuf) -> anyhow::Result<()> {
+        self.path = Some(path.clone());
         let i = ffmpeg_next::format::input(&path)?;
 
         let stream = i
