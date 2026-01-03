@@ -3,12 +3,19 @@ use std::{path::PathBuf, sync::Arc};
 use gpui::*;
 use gpui_component::*;
 
-use crate::ui::{player::size::PlayerSize, views::about::AboutView, views::app::MyApp};
+use crate::{
+    models::model::OutputParams,
+    ui::{
+        player::size::PlayerSize,
+        views::{about::AboutView, app::MyApp, output::OutputView},
+    },
+};
 use reqwest_client;
 mod components;
+mod models;
 mod ui;
 
-actions!([Quit, About]);
+actions!(app, [Quit, About, Output]);
 
 fn main() {
     ffmpeg_next::init().unwrap();
@@ -26,6 +33,7 @@ fn main() {
         init_theme(cx);
 
         let size_entity = cx.new(|_cx| PlayerSize::new());
+        let params_entity: Entity<Option<OutputParams>> = cx.new(|_| None);
 
         cx.set_http_client(Arc::new(http));
         cx.on_action(|_: &Quit, cx| {
@@ -47,38 +55,14 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| MyApp::new(cx, size_entity));
+                let view = cx.new(|cx| MyApp::new(cx, size_entity, params_entity.clone()));
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )
         .unwrap();
 
-        cx.on_action(|_: &About, cx| {
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                        None,
-                        size(px(400.), px(300.)),
-                        cx,
-                    ))),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("About".into()),
-                        appears_transparent: false,
-                        traffic_light_position: None,
-                    }),
-                    focus: true,
-                    show: true,
-                    is_resizable: false,
-                    is_minimizable: false,
-                    ..Default::default()
-                },
-                |window, cx| {
-                    let view = cx.new(|_| AboutView);
-                    cx.new(|cx| Root::new(view, window, cx))
-                },
-            )
-            .unwrap();
-        });
+        cx.on_action(open_about_window());
+        cx.on_action(open_output_window(params_entity));
 
         // cx.spawn(async move |acx| {
         //     acx.open_window(WindowOptions::default(), |window, cx| {
@@ -91,6 +75,64 @@ fn main() {
         // })
         // .detach();
     });
+}
+
+fn open_output_window(params: Entity<Option<OutputParams>>) -> impl Fn(&Output, &mut App) {
+    move |_: &Output, cx: &mut App| {
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(500.), px(300.)),
+                    cx,
+                ))),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Output".into()),
+                    appears_transparent: false,
+                    traffic_light_position: None,
+                }),
+                focus: true,
+                show: true,
+                is_resizable: false,
+                is_minimizable: false,
+                ..Default::default()
+            },
+            |window, cx| {
+                let view = cx.new(|_| OutputView::new(params.clone()));
+                cx.new(|cx| Root::new(view, window, cx))
+            },
+        )
+        .unwrap();
+    }
+}
+
+fn open_about_window() -> impl Fn(&Output, &mut App) {
+    |_: &Output, cx: &mut App| {
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(400.), px(300.)),
+                    cx,
+                ))),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("About".into()),
+                    appears_transparent: false,
+                    traffic_light_position: None,
+                }),
+                focus: true,
+                show: true,
+                is_resizable: false,
+                is_minimizable: false,
+                ..Default::default()
+            },
+            |window, cx| {
+                let view = cx.new(|_| AboutView);
+                cx.new(|cx| Root::new(view, window, cx))
+            },
+        )
+        .unwrap();
+    }
 }
 
 fn init_theme(cx: &mut App) {

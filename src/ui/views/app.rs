@@ -5,7 +5,9 @@ use gpui::{
 use gpui_component::{ActiveTheme, StyledExt, button::Button};
 
 use crate::{
+    Output,
     components::app_title_bar::AppTitleBar,
+    models::model::OutputParams,
     ui::{
         output::output::output,
         player::{
@@ -24,7 +26,11 @@ pub struct MyApp {
 }
 
 impl MyApp {
-    pub fn new(cx: &mut Context<Self>, size_entity: Entity<PlayerSize>) -> Self {
+    pub fn new(
+        cx: &mut Context<Self>,
+        size_entity: Entity<PlayerSize>,
+        param_entity: Entity<Option<OutputParams>>,
+    ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new("EzClip", cx));
 
         Self {
