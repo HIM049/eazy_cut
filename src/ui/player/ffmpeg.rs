@@ -19,9 +19,12 @@ use ringbuf::{
     traits::{Observer, Producer},
 };
 
-use crate::ui::{
-    player::{frame::FrameImage, size::PlayerSize, utils::generate_image_fallback},
-    views::app::MyApp,
+use crate::{
+    models::model::OutputParams,
+    ui::{
+        player::{frame::FrameImage, size::PlayerSize, utils::generate_image_fallback},
+        views::app::MyApp,
+    },
 };
 
 #[derive(Debug)]
@@ -33,7 +36,6 @@ pub enum DecoderEvent {
 }
 
 pub struct VideoDecoder {
-    path: Option<PathBuf>,
     input: Option<context::Input>,
     video_stream_ix: usize,
     audio_stream_ix: usize,
@@ -45,6 +47,7 @@ pub struct VideoDecoder {
 
     producer: Option<HeapProd<FrameImage>>,
     size: Entity<PlayerSize>,
+    output_prarms: Entity<OutputParams>,
 
     event: Arc<Mutex<DecoderEvent>>,
     condvar: Arc<Condvar>,
@@ -52,9 +55,8 @@ pub struct VideoDecoder {
 
 impl VideoDecoder {
     /// Create a new Decoder
-    pub fn new(size_entity: Entity<PlayerSize>) -> Self {
+    pub fn new(size_entity: Entity<PlayerSize>, output_prarms: Entity<OutputParams>) -> Self {
         Self {
-            path: None,
             input: None,
             video_stream_ix: 0,
             audio_stream_ix: 0,
@@ -66,6 +68,7 @@ impl VideoDecoder {
 
             producer: None,
             size: size_entity,
+            output_prarms,
 
             event: Arc::new(Mutex::new(DecoderEvent::None)),
             condvar: Arc::new(Condvar::new()),
@@ -97,18 +100,13 @@ impl VideoDecoder {
         Some(self.duration)
     }
 
-    pub fn path(&self) -> Option<PathBuf> {
-        self.path.clone()
-    }
-
     pub fn video_stream_ix(&self) -> usize {
         self.video_stream_ix
     }
 
     /// open a video file
-    pub fn open(&mut self, cx: &mut Context<MyApp>, path: PathBuf) -> anyhow::Result<()> {
-        self.path = Some(path.clone());
-        let i = ffmpeg_next::format::input(&path)?;
+    pub fn open(&mut self, cx: &mut Context<MyApp>, path: &PathBuf) -> anyhow::Result<()> {
+        let i = ffmpeg_next::format::input(path)?;
 
         let stream = i
             .streams()
@@ -149,8 +147,14 @@ impl VideoDecoder {
         self.frames = frames;
         self.duration = duration;
 
-        self.size.update(cx, |p, _| {
-            p.set_orignal((orignal_width, orignal_height));
+        self.size.update(cx, |s, _| {
+            s.set_orignal((orignal_width, orignal_height));
+        });
+
+        self.output_prarms.update(cx, |p, _| {
+            p.path = Some(path.clone());
+            p.video_stream_ix = Some(self.video_stream_ix);
+            p.audio_stream_ix = Some(self.audio_stream_ix);
         });
 
         Ok(())

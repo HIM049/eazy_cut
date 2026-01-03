@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-pub fn output(path: PathBuf, stream_ix: usize, time_range: (f32, f32)) {
+pub fn output(path: &PathBuf, stream_ix: usize, time_range: (f32, f32)) {
     println!(
         "DEBUG: run output, path: {:?}, stream_ix: {}, time_range: {:?}",
         path, stream_ix, time_range

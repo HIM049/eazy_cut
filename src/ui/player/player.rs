@@ -7,15 +7,18 @@ use ringbuf::{
     traits::{Consumer, Split},
 };
 
-use crate::ui::{
-    player::{
-        ffmpeg::{DecoderEvent, VideoDecoder},
-        frame::{FrameAction, FrameImage},
-        size::PlayerSize,
-        utils::generate_image_fallback,
-        viewer::Viewer,
+use crate::{
+    models::model::OutputParams,
+    ui::{
+        player::{
+            ffmpeg::{DecoderEvent, VideoDecoder},
+            frame::{FrameAction, FrameImage},
+            size::PlayerSize,
+            utils::generate_image_fallback,
+            viewer::Viewer,
+        },
+        views::app::MyApp,
     },
-    views::app::MyApp,
 };
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -27,6 +30,7 @@ pub enum PlayState {
 
 pub struct Player {
     size: Entity<PlayerSize>,
+    output_params: Entity<OutputParams>,
     decoder: VideoDecoder,
     frame: Arc<RenderImage>,
     frame_buf: Option<FrameImage>,
@@ -37,12 +41,13 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(size_entity: Entity<PlayerSize>) -> Self {
+    pub fn new(size_entity: Entity<PlayerSize>, output_params: Entity<OutputParams>) -> Self {
         let rb = ringbuf::SharedRb::<Heap<FrameImage>>::new(30 * 1);
         let (producer, consumer) = rb.split();
         Self {
             size: size_entity.clone(),
-            decoder: VideoDecoder::new(size_entity).set_producer(producer),
+            output_params: output_params.clone(),
+            decoder: VideoDecoder::new(size_entity, output_params).set_producer(producer),
             frame: generate_image_fallback((1, 1), vec![]),
             frame_buf: None,
             consumer,
@@ -52,17 +57,9 @@ impl Player {
         }
     }
 
-    pub fn open(&mut self, cx: &mut Context<MyApp>) {
-        self.decoder
-            .open(
-                cx,
-                "D:/Videos/Records/Apex Legends 2024.05.04 - 18.07.10.04.DVR.mp4".into(),
-            )
-            .unwrap();
-    }
-
-    pub fn path(&self) -> Option<PathBuf> {
-        self.decoder.path()
+    pub fn open(&mut self, cx: &mut Context<MyApp>, path: &PathBuf) -> anyhow::Result<()> {
+        self.decoder.open(cx, path)?;
+        Ok(())
     }
 
     pub fn video_stream_ix(&self) -> usize {

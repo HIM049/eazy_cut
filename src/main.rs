@@ -33,7 +33,7 @@ fn main() {
         init_theme(cx);
 
         let size_entity = cx.new(|_cx| PlayerSize::new());
-        let params_entity: Entity<Option<OutputParams>> = cx.new(|_| None);
+        let params_entity: Entity<OutputParams> = cx.new(|_| OutputParams::default());
 
         cx.set_http_client(Arc::new(http));
         cx.on_action(|_: &Quit, cx| {
@@ -77,7 +77,7 @@ fn main() {
     });
 }
 
-fn open_output_window(params: Entity<Option<OutputParams>>) -> impl Fn(&Output, &mut App) {
+fn open_output_window(params: Entity<OutputParams>) -> impl Fn(&Output, &mut App) {
     move |_: &Output, cx: &mut App| {
         cx.open_window(
             WindowOptions {
@@ -95,10 +95,11 @@ fn open_output_window(params: Entity<Option<OutputParams>>) -> impl Fn(&Output, 
                 show: true,
                 is_resizable: false,
                 is_minimizable: false,
+                kind: WindowKind::PopUp,
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|_| OutputView::new(params.clone()));
+                let view = cx.new(|cx| OutputView::new(window, cx, params.clone()));
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )

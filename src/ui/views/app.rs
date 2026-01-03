@@ -5,11 +5,9 @@ use gpui::{
 use gpui_component::{ActiveTheme, StyledExt, button::Button};
 
 use crate::{
-    Output,
     components::app_title_bar::AppTitleBar,
     models::model::OutputParams,
     ui::{
-        output::output::output,
         player::{
             player::{PlayState, Player},
             size::PlayerSize,
@@ -21,7 +19,9 @@ use crate::{
 pub struct MyApp {
     title_bar: Entity<AppTitleBar>,
     size: Entity<PlayerSize>,
+    output_parames: Entity<OutputParams>,
     player: Player,
+    // here selection_range is percentage of progress
     selection_range: (Option<f32>, Option<f32>),
 }
 
@@ -29,24 +29,31 @@ impl MyApp {
     pub fn new(
         cx: &mut Context<Self>,
         size_entity: Entity<PlayerSize>,
-        param_entity: Entity<Option<OutputParams>>,
+        param_entity: Entity<OutputParams>,
     ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new("EzClip", cx));
 
         Self {
             title_bar,
             size: size_entity.clone(),
-            player: Player::new(size_entity),
+            output_parames: param_entity.clone(),
+            player: Player::new(size_entity, param_entity),
             selection_range: (None, None),
         }
     }
 
     pub fn new_player(&mut self) {
-        self.player = Player::new(self.size.clone());
+        self.player = Player::new(self.size.clone(), self.output_parames.clone());
     }
 
     pub fn open(&mut self, cx: &mut Context<Self>) {
-        self.player.open(cx);
+        let path = "D:/Videos/Records/Apex Legends 2024.05.04 - 18.07.10.04.DVR.mp4";
+        self.output_parames.update(cx, |params, _| {
+            params.path = Some(path.into());
+        });
+        if let Some(path) = self.output_parames.read(cx).path.clone() {
+            self.player.open(cx, &path).unwrap();
+        }
     }
 
     pub fn run(&mut self, cx: &mut Context<Self>) {
@@ -56,6 +63,19 @@ impl MyApp {
 
     fn play_percent(&self) -> f32 {
         self.player.play_percentage().unwrap_or(0.)
+    }
+
+    fn set_range(&mut self, cx: &mut Context<Self>, percent_range: (Option<f32>, Option<f32>)) {
+        if let Some(a) = percent_range.0 {
+            self.selection_range.0 = Some(a);
+        }
+        if let Some(b) = percent_range.1 {
+            self.selection_range.1 = Some(b);
+        }
+
+        self.output_parames.update(cx, |p, _| {
+            p.selected_range = self.get_sec_range();
+        });
     }
 
     fn get_sec_range(&self) -> Option<(f32, f32)> {
@@ -193,32 +213,17 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                     )))
                     .child(Button::new("a").child("Point A").on_click(cx.listener(
                         |this, _, _, cx| {
-                            this.selection_range.0 = Some(this.play_percent());
+                            this.set_range(cx, (Some(this.play_percent()), None));
                             cx.notify();
                         },
                     )))
                     .child(Button::new("b").child("Point B").on_click(cx.listener(
                         |this, _, _, cx| {
-                            this.selection_range.1 = Some(this.play_percent());
+                            this.set_range(cx, (None, Some(this.play_percent())));
                             cx.notify();
                         },
                     )))
-                })
-                .when(
-                    this.selection_range.0.is_some() && this.selection_range.1.is_some(),
-                    |this| {
-                        this.child(Button::new("out").child("Output").on_click(cx.listener(
-                            |this, _, _, cx| {
-                                output(
-                                    this.player.path().unwrap(),
-                                    this.player.video_stream_ix(),
-                                    this.get_sec_range().unwrap(),
-                                );
-                                cx.notify();
-                            },
-                        )))
-                    },
-                ),
+                }),
         )
         .into_any_element()
 }
