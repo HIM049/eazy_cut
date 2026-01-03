@@ -29,18 +29,18 @@ impl OutputView {
     pub fn run_output(&self, cx: &mut gpui::App) {
         let param = self.params.read(cx);
         let Some(path) = param.path.as_ref() else {
+            println!("DEBUG: error when output: None path");
             return;
         };
         let Some(v_ix) = param.video_stream_ix else {
+            println!("DEBUG: error when output: None video_stream_ix");
             return;
         };
         let Some(range) = param.selected_range else {
+            println!("DEBUG: error when output: None selected_range");
             return;
         };
         output(path, v_ix, range);
-        // else {
-        //     println!("DEBUG: error when output: None params")
-        // }
     }
 }
 

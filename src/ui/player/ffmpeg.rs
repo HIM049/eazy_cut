@@ -100,10 +100,6 @@ impl VideoDecoder {
         Some(self.duration)
     }
 
-    pub fn video_stream_ix(&self) -> usize {
-        self.video_stream_ix
-    }
-
     /// open a video file
     pub fn open(&mut self, cx: &mut Context<MyApp>, path: &PathBuf) -> anyhow::Result<()> {
         let i = ffmpeg_next::format::input(path)?;
@@ -151,6 +147,7 @@ impl VideoDecoder {
             s.set_orignal((orignal_width, orignal_height));
         });
 
+        // update related output params
         self.output_prarms.update(cx, |p, _| {
             p.path = Some(path.clone());
             p.video_stream_ix = Some(self.video_stream_ix);

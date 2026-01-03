@@ -62,10 +62,6 @@ impl Player {
         Ok(())
     }
 
-    pub fn video_stream_ix(&self) -> usize {
-        self.decoder.video_stream_ix()
-    }
-
     pub fn start_play(&mut self, cx: &mut Context<MyApp>) {
         self.state = PlayState::Playing;
         self.decoder.spawn_decoder(self.size.clone(), cx);

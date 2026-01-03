@@ -4,7 +4,7 @@ use gpui::*;
 use gpui_component::*;
 
 use crate::{
-    models::model::OutputParams,
+    models::model::{OutputParams, WindowState},
     ui::{
         player::size::PlayerSize,
         views::{about::AboutView, app::MyApp, output::OutputView},
@@ -34,6 +34,7 @@ fn main() {
 
         let size_entity = cx.new(|_cx| PlayerSize::new());
         let params_entity: Entity<OutputParams> = cx.new(|_| OutputParams::default());
+        let window_state = cx.new(|_| WindowState::default());
 
         cx.set_http_client(Arc::new(http));
         cx.on_action(|_: &Quit, cx| {
@@ -61,8 +62,8 @@ fn main() {
         )
         .unwrap();
 
-        cx.on_action(open_about_window());
-        cx.on_action(open_output_window(params_entity));
+        cx.on_action(open_about_window(window_state.clone()));
+        cx.on_action(open_output_window(window_state, params_entity));
 
         // cx.spawn(async move |acx| {
         //     acx.open_window(WindowOptions::default(), |window, cx| {
@@ -77,62 +78,106 @@ fn main() {
     });
 }
 
-fn open_output_window(params: Entity<OutputParams>) -> impl Fn(&Output, &mut App) {
+fn open_output_window(
+    window_state: Entity<WindowState>,
+    params: Entity<OutputParams>,
+) -> impl Fn(&Output, &mut App) {
     move |_: &Output, cx: &mut App| {
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(500.), px(300.)),
-                    cx,
-                ))),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("Output".into()),
-                    appears_transparent: false,
-                    traffic_light_position: None,
-                }),
-                focus: true,
-                show: true,
-                is_resizable: false,
-                is_minimizable: false,
-                kind: WindowKind::PopUp,
-                ..Default::default()
-            },
-            |window, cx| {
-                let view = cx.new(|cx| OutputView::new(window, cx, params.clone()));
-                cx.new(|cx| Root::new(view, window, cx))
-            },
-        )
-        .unwrap();
+        let state = window_state.read(cx);
+        if let Some(h) = state.output_handle {
+            if let Some(active) = h.is_active(cx) {
+                if active {
+                    return;
+                } else {
+                    h.update(cx, |_, w, _| {
+                        w.activate_window();
+                    })
+                    .unwrap();
+                    return;
+                }
+            } else {
+                window_state.update(cx, |ws, _| {
+                    ws.output_handle = None;
+                });
+            }
+        }
+        let handle = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                        None,
+                        size(px(500.), px(300.)),
+                        cx,
+                    ))),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("Output".into()),
+                        appears_transparent: false,
+                        traffic_light_position: None,
+                    }),
+                    focus: true,
+                    show: true,
+                    is_resizable: false,
+                    is_minimizable: false,
+                    kind: WindowKind::PopUp,
+                    ..Default::default()
+                },
+                |window, cx| {
+                    let view = cx.new(|cx| OutputView::new(window, cx, params.clone()));
+                    cx.new(|cx| Root::new(view, window, cx))
+                },
+            )
+            .unwrap();
+
+        window_state.update(cx, |ws, _| ws.output_handle = Some(handle));
     }
 }
 
-fn open_about_window() -> impl Fn(&Output, &mut App) {
-    |_: &Output, cx: &mut App| {
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(400.), px(300.)),
-                    cx,
-                ))),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("About".into()),
-                    appears_transparent: false,
-                    traffic_light_position: None,
-                }),
-                focus: true,
-                show: true,
-                is_resizable: false,
-                is_minimizable: false,
-                ..Default::default()
-            },
-            |window, cx| {
-                let view = cx.new(|_| AboutView);
-                cx.new(|cx| Root::new(view, window, cx))
-            },
-        )
-        .unwrap();
+fn open_about_window(window_state: Entity<WindowState>) -> impl Fn(&About, &mut App) {
+    move |_: &About, cx: &mut App| {
+        let state = window_state.read(cx);
+        if let Some(h) = state.about_handle {
+            if let Some(active) = h.is_active(cx) {
+                if active {
+                    return;
+                } else {
+                    h.update(cx, |_, w, _| {
+                        w.activate_window();
+                    })
+                    .unwrap();
+                    return;
+                }
+            } else {
+                window_state.update(cx, |ws, _| {
+                    ws.about_handle = None;
+                });
+            }
+        }
+        let handle = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                        None,
+                        size(px(400.), px(300.)),
+                        cx,
+                    ))),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("About".into()),
+                        appears_transparent: false,
+                        traffic_light_position: None,
+                    }),
+                    focus: true,
+                    show: true,
+                    is_resizable: false,
+                    is_minimizable: false,
+                    ..Default::default()
+                },
+                |window, cx| {
+                    let view = cx.new(|_| AboutView);
+                    cx.new(|cx| Root::new(view, window, cx))
+                },
+            )
+            .unwrap();
+        window_state.update(cx, |ws, _| ws.about_handle = Some(handle));
     }
 }
 
