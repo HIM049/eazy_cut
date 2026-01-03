@@ -8,7 +8,6 @@ use ringbuf::{
 };
 
 use crate::ui::{
-    app::MyApp,
     player::{
         ffmpeg::{DecoderEvent, VideoDecoder},
         frame::{FrameAction, FrameImage},
@@ -16,6 +15,7 @@ use crate::ui::{
         utils::generate_image_fallback,
         viewer::Viewer,
     },
+    views::app::MyApp,
 };
 
 #[derive(PartialEq, Clone, Copy, Debug)]

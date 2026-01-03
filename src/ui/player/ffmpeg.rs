@@ -20,8 +20,8 @@ use ringbuf::{
 };
 
 use crate::ui::{
-    app::MyApp,
     player::{frame::FrameImage, size::PlayerSize, utils::generate_image_fallback},
+    views::app::MyApp,
 };
 
 #[derive(Debug)]
