@@ -101,8 +101,9 @@ impl Render for OutputView {
                             .small()
                             .primary()
                             .label("Output")
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_click(cx.listener(|this, _, w, cx| {
                                 this.run_output(cx);
+                                w.remove_window();
                             })),
                     ),
             )
