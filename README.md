@@ -10,7 +10,7 @@ a tiny video edit tool for make clips fast and eazy.
   - [x] seek video
   - [x] select range
   - [x] basic output (copy stream)
-  - [ ] output with sound
+  - [x] output with sound
   - [ ] code transform
   - [ ] output compression
   - [ ] clip base preview & output

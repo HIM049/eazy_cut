@@ -36,18 +36,22 @@ impl OutputView {
             println!("DEBUG: error when output: None video_stream_ix");
             return;
         };
+        let Some(a_ix) = param.audio_stream_ix else {
+            println!("DEBUG: error when output: None audio_stream_ix");
+            return;
+        };
         let Some(range) = param.selected_range else {
             println!("DEBUG: error when output: None selected_range");
             return;
         };
-        output(path, v_ix, range);
+        output(path, v_ix, a_ix, range).unwrap();
     }
 }
 
 impl Render for OutputView {
     fn render(
         &mut self,
-        window: &mut gpui::Window,
+        _: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl gpui::IntoElement {
         div()
