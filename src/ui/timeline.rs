@@ -92,12 +92,13 @@ impl Element for Timeline {
         let scale = window.scale_factor();
 
         // timeline base
+        let timeline_h = px(10.);
         window.paint_quad(quad(
             Bounds {
                 origin: self.origin_point,
                 size: Size {
                     width: bounds.size.width,
-                    height: px(10.),
+                    height: timeline_h,
                 },
             },
             Corners::default(),
@@ -134,7 +135,7 @@ impl Element for Timeline {
         let head_size = px(5.0 / scale);
 
         let width = px(1.0 / scale);
-        let height = px(16.);
+        let height = px(20.);
         let x = self.indicator_x(bounds);
         let y = self.origin_point.y - px(14.);
         let color = gpui::white();
@@ -150,7 +151,10 @@ impl Element for Timeline {
         // paint indicator line
         window.paint_quad(quad(
             Bounds {
-                origin: point(x - width / 2.0, self.origin_point.y - px(3.)),
+                origin: point(
+                    x - width / 2.0,
+                    self.origin_point.y - (height - timeline_h) / 2.,
+                ),
                 size: Size {
                     width: width,
                     height: height,

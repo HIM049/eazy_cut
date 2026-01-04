@@ -155,6 +155,17 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                     ),
                 ),
         )
+        .child(div().w_full().flex().justify_center().when_else(
+            this.player.get_state() != PlayState::Stopped,
+            |d| {
+                d.child(format!(
+                    "{:3.2}s / {:3.2}s",
+                    this.player.current_playtime(),
+                    this.player.duration_sec().unwrap_or(0.)
+                ))
+            },
+            |d| d.child(""),
+        ))
         .child(
             div()
                 .flex()

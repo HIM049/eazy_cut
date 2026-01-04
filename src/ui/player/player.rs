@@ -157,12 +157,7 @@ impl Player {
         let play_time = time.elapsed().as_secs_f32() + self.played_time.unwrap_or(0.);
         let frame_time = frame_pts as f32 / time_base.denominator() as f32;
 
-        if frame_time <= play_time {
-            println!(
-                "DEBUG: TIME SYNC - frame_time: {:6.2} | play_time: {:6.2}",
-                frame_time, play_time
-            );
-        }
+        if frame_time <= play_time {}
 
         if (play_time - frame_time).abs() <= 0.3 {
             if frame_time <= play_time {
