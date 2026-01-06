@@ -39,6 +39,8 @@ pub struct Player {
     played_time: Option<f32>,
     state: PlayState,
 
+    recent_pts: f32,
+    is_time_set: bool,
     is_seeking: bool,
 }
 
@@ -57,6 +59,8 @@ impl Player {
             played_time: None,
             state: PlayState::Stopped,
 
+            recent_pts: 0.0,
+            is_time_set: false,
             is_seeking: false,
         }
     }
@@ -100,6 +104,7 @@ impl Player {
         F: Fn(f32, f32) -> f32,
     {
         self.pause_timer();
+        self.is_time_set = true;
         let now = self.played_time.unwrap_or(0.);
         let dur_sec = self.duration_sec().unwrap_or(0.);
         self.played_time = Some(update_fn(now, dur_sec).clamp(0.0, dur_sec));
@@ -166,13 +171,20 @@ impl Player {
         self.played_time.unwrap_or(0.) + time_sec
     }
 
+    fn frame_time(&self, pts: u64) -> Option<f32> {
+        if let Some(time_base) = self.decoder.get_timebase() {
+            Some(pts as f32 / time_base.denominator() as f32)
+        } else {
+            return None;
+        }
+    }
+
     fn compare_time(&mut self, frame_pts: u64) -> FrameAction {
-        let Some(time_base) = self.decoder.get_timebase() else {
+        let Some(frame_time) = self.frame_time(frame_pts) else {
             return FrameAction::Wait;
         };
-
+        self.recent_pts = frame_time;
         let play_time = self.play_time();
-        let frame_time = frame_pts as f32 / time_base.denominator() as f32;
 
         if (play_time - frame_time).abs() <= 0.3 {
             if self.is_seeking {
@@ -185,14 +197,26 @@ impl Player {
                 FrameAction::Wait
             }
         } else {
-            if self.is_seeking {
+            if self.is_seeking && !self.is_time_set {
                 return FrameAction::Drop;
             } else {
                 self.is_seeking = true;
+                self.is_time_set = false;
                 self.pause_timer();
                 FrameAction::ReSeek(play_time)
             }
         }
+    }
+
+    pub fn dbg_msg(&self) -> String {
+        format!(
+            "PlayInfo: PT {:.2}, RFT {:.2}, SEEKING {}, UNHANDLE_SET {}, DIFF {:.2}",
+            self.play_time(),
+            self.recent_pts,
+            self.is_seeking,
+            self.is_time_set,
+            self.play_time() - self.recent_pts
+        )
     }
 
     pub fn view(&mut self, w: &mut Window) -> Viewer {
@@ -223,8 +247,11 @@ impl Player {
                         self.decoder.set_event(DecoderEvent::Seek(t));
                         w.drop_image(next_frame.image).unwrap();
                         self.consumer.clear();
+                        self.frame_buf = None;
                     }
-                    FrameAction::Drop => w.drop_image(next_frame.image).unwrap(),
+                    FrameAction::Drop => {
+                        w.drop_image(next_frame.image).unwrap();
+                    }
                 }
             }
         }

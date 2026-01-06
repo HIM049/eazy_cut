@@ -10,7 +10,7 @@ use ffmpeg_next::{
     Rational,
     codec::{self},
     decoder::{self},
-    format::{self, context},
+    format::{self, context, stream},
     software::scaling::{self},
 };
 use gpui::{Context, Entity};
@@ -51,6 +51,8 @@ pub struct VideoDecoder {
 
     event: Arc<Mutex<DecoderEvent>>,
     condvar: Arc<Condvar>,
+
+    seek_to: Option<i64>,
 }
 
 impl VideoDecoder {
@@ -72,6 +74,8 @@ impl VideoDecoder {
 
             event: Arc::new(Mutex::new(DecoderEvent::None)),
             condvar: Arc::new(Condvar::new()),
+
+            seek_to: None,
         }
     }
 
@@ -171,6 +175,10 @@ impl VideoDecoder {
         let Some(mut producer) = self.producer.take() else {
             return;
         };
+        let Some(time_base) = self.time_base else {
+            return;
+        };
+
         let orignal_size = size.read(cx).orignal_size();
 
         let video_ix = self.video_stream_ix;
@@ -180,7 +188,6 @@ impl VideoDecoder {
         let h = decoder.height();
         let event = self.event.clone();
         let condvar = self.condvar.clone();
-
         thread::spawn(move || {
             // init ffmpeg scaler
             let mut scaler_context = ffmpeg_next::software::scaling::Context::get(
@@ -200,6 +207,7 @@ impl VideoDecoder {
             let mut decoded_frame = ffmpeg_next::frame::Video::new(decoder.format(), w, h);
             let mut scaled_frame = ffmpeg_next::frame::Video::new(format::Pixel::BGRA, w, h);
 
+            let mut seek_to: Option<f32> = None;
             loop {
                 {
                     // handle decoder event
@@ -218,6 +226,7 @@ impl VideoDecoder {
                                 continue;
                             }
                             decoder.flush();
+                            seek_to = Some(t);
                         }
                     }
                     *event = DecoderEvent::None;
@@ -242,6 +251,16 @@ impl VideoDecoder {
 
                     // try receive decoder
                     if decoder.receive_frame(&mut decoded_frame).is_ok() {
+                        // drop extra frames when seek
+                        if let Some(to) = seek_to {
+                            let target = (to * time_base.denominator() as f32) as i64;
+                            if decoded_frame.pts().unwrap_or(0) < target {
+                                continue;
+                            } else {
+                                seek_to = None;
+                            }
+                        }
+                        // convert frame
                         scaler_context
                             .run(&decoded_frame, &mut scaled_frame)
                             .unwrap();

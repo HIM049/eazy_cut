@@ -2,7 +2,10 @@ use gpui::{
     AnyElement, AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Window,
     div, prelude::FluentBuilder,
 };
-use gpui_component::{ActiveTheme, StyledExt, button::Button};
+use gpui_component::{
+    ActiveTheme, StyledExt,
+    button::{Button, ButtonVariants},
+};
 
 use crate::{
     components::app_title_bar::AppTitleBar,
@@ -162,10 +165,10 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                     ),
                 ),
         )
-        .child(div().w_full().flex().justify_center().when_else(
+        .child(div().w_full().flex().justify_between().when_else(
             this.player.get_state() != PlayState::Stopped,
             |d| {
-                d.child(format!(
+                d.child(this.player.dbg_msg()).child(format!(
                     "{} / {}",
                     format_sec(this.player.current_playtime()),
                     format_sec(this.player.duration_sec().unwrap_or(0.))
@@ -198,13 +201,16 @@ fn control_area(this: &mut MyApp, cx: &mut Context<MyApp>) -> AnyElement {
                     )))
                 })
                 .when(play_state != PlayState::Stopped, |this| {
-                    this.child(Button::new("stop").child("Stop").on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.selection_range = (None, None);
-                            this.new_player();
-                            cx.notify()
-                        },
-                    )))
+                    this.child(
+                        Button::new("stop")
+                            .danger()
+                            .child("Stop")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.selection_range = (None, None);
+                                this.new_player();
+                                cx.notify()
+                            })),
+                    )
                     .child(Button::new("min").child("-10s").on_click(cx.listener(
                         |this, _, _, cx| {
                             this.player.set_playtime(|now, _| now - 10.);
