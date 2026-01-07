@@ -29,6 +29,7 @@ pub enum PlayState {
 }
 
 pub struct Player {
+    init: bool,
     size: Entity<PlayerSize>,
     // output_params: Entity<OutputParams>,
     decoder: VideoDecoder,
@@ -49,6 +50,7 @@ impl Player {
         let rb = ringbuf::SharedRb::<Heap<FrameImage>>::new(30 * 1);
         let (producer, consumer) = rb.split();
         Self {
+            init: false,
             size: size_entity.clone(),
             // output_params: output_params.clone(),
             decoder: VideoDecoder::new(size_entity, output_params).set_producer(producer),
@@ -65,11 +67,16 @@ impl Player {
         }
     }
 
+    pub fn is_init(&self) -> bool {
+        self.init
+    }
+
     pub fn open<T>(&mut self, cx: &mut Context<T>, path: &PathBuf) -> anyhow::Result<()>
     where
         T: 'static,
     {
         self.decoder.open(cx, path)?;
+        self.init = true;
         Ok(())
     }
 
