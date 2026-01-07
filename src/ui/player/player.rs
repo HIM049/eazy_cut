@@ -31,8 +31,8 @@ pub enum PlayState {
 pub struct Player {
     init: bool,
     size: Entity<PlayerSize>,
-    // output_params: Entity<OutputParams>,
-    decoder: VideoDecoder,
+    output_params: Entity<OutputParams>,
+    decoder: Option<VideoDecoder>,
     frame: Arc<RenderImage>,
     frame_buf: Option<FrameImage>,
     consumer: HeapCons<FrameImage>,
@@ -52,8 +52,8 @@ impl Player {
         Self {
             init: false,
             size: size_entity.clone(),
-            // output_params: output_params.clone(),
-            decoder: VideoDecoder::new(size_entity, output_params).set_producer(producer),
+            output_params: output_params.clone(),
+            decoder: None,
             frame: generate_image_fallback((1, 1), vec![]),
             frame_buf: None,
             consumer,
@@ -75,27 +75,35 @@ impl Player {
     where
         T: 'static,
     {
-        self.decoder.open(cx, path)?;
+        self.decoder = Some(
+            VideoDecoder::open(cx, path, self.size.clone(), self.output_params.clone()).unwrap(),
+        );
         self.init = true;
         Ok(())
     }
 
     pub fn start_play(&mut self, cx: &mut Context<MyApp>) {
-        self.state = PlayState::Playing;
-        self.start_timer();
-        self.decoder.spawn_decoder(self.size.clone(), cx);
+        if let Some(decoder) = self.decoder.as_mut() {
+            decoder.spawn_decoder(self.size.clone(), cx);
+            self.state = PlayState::Playing;
+            self.start_timer();
+        }
     }
 
     pub fn resume_play(&mut self) {
         self.state = PlayState::Playing;
         self.start_timer();
-        self.decoder.set_event(DecoderEvent::None);
+        if let Some(decoder) = self.decoder.as_mut() {
+            decoder.set_event(DecoderEvent::None);
+        }
     }
 
     pub fn pause_play(&mut self) {
-        self.state = PlayState::Paused;
-        self.decoder.set_event(DecoderEvent::Pause);
-        self.pause_timer();
+        if let Some(decoder) = self.decoder.as_mut() {
+            decoder.set_event(DecoderEvent::Pause);
+            self.state = PlayState::Paused;
+            self.pause_timer();
+        }
     }
 
     pub fn stop_play(&mut self) {
@@ -103,7 +111,10 @@ impl Player {
         self.start_time = None;
         self.frame = generate_image_fallback((1, 1), vec![]);
         self.frame_buf = None;
-        self.decoder.set_event(DecoderEvent::Stop);
+        if let Some(decoder) = self.decoder.as_mut() {
+            decoder.set_event(DecoderEvent::Stop);
+        }
+        // TODO: drop decoder
     }
 
     pub fn set_playtime<F>(&mut self, update_fn: F)
@@ -130,12 +141,13 @@ impl Player {
     }
 
     pub fn play_percentage(&self) -> Option<f32> {
-        let Some(duration) = self.decoder.get_duration() else {
+        let Some(decoder) = self.decoder.as_ref() else {
             return None;
         };
-        let Some(timebase) = self.decoder.get_timebase() else {
+        let Some(duration) = decoder.get_duration() else {
             return None;
         };
+        let timebase = decoder.get_timebase();
         if duration.is_negative() {
             return None;
         }
@@ -144,12 +156,13 @@ impl Player {
     }
 
     pub fn duration_sec(&self) -> Option<f32> {
-        let Some(duration) = self.decoder.get_duration() else {
+        let Some(decoder) = self.decoder.as_ref() else {
             return None;
         };
-        let Some(timebase) = self.decoder.get_timebase() else {
+        let Some(duration) = decoder.get_duration() else {
             return None;
         };
+        let timebase = decoder.get_timebase();
         Some((duration as f64 / timebase.denominator() as f64) as f32)
     }
 
@@ -179,11 +192,11 @@ impl Player {
     }
 
     fn frame_time(&self, pts: u64) -> Option<f32> {
-        if let Some(time_base) = self.decoder.get_timebase() {
-            Some(pts as f32 / time_base.denominator() as f32)
-        } else {
+        let Some(decoder) = self.decoder.as_ref() else {
             return None;
-        }
+        };
+        let time_base = decoder.get_timebase();
+        Some(pts as f32 / time_base.denominator() as f32)
     }
 
     fn compare_time(&mut self, frame_pts: u64) -> FrameAction {
@@ -251,7 +264,9 @@ impl Player {
                         self.frame = next_frame.image;
                     }
                     FrameAction::ReSeek(t) => {
-                        self.decoder.set_event(DecoderEvent::Seek(t));
+                        if let Some(decoder) = self.decoder.as_mut() {
+                            decoder.set_event(DecoderEvent::Seek(t));
+                        };
                         w.drop_image(next_frame.image).unwrap();
                         self.consumer.clear();
                         self.frame_buf = None;

@@ -18,3 +18,5 @@ a tiny video edit tool for make clips fast and eazy.
   - [ ] multiple source
   - [x] file picker & open action
   - [x] seek fix
+  - [ ] multiple audio stream
+  - [ ] multiple audio stream mix

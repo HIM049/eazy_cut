@@ -10,7 +10,8 @@ use ffmpeg_next::{
     Rational,
     codec::{self},
     decoder::{self},
-    format::{self, context, stream},
+    format::{self, context},
+    frame::audio,
     software::scaling::{self},
 };
 use gpui::{Context, Entity};
@@ -39,10 +40,9 @@ pub struct VideoDecoder {
     input: Option<context::Input>,
     video_stream_ix: usize,
     audio_stream_ix: usize,
-    decoder: Option<decoder::Video>,
-    code_parms: codec::Parameters,
-    time_base: Option<Rational>,
-    frames: i64,
+    v_decoder: Option<decoder::Video>,
+    a_decoder: Option<decoder::Audio>,
+    time_base: Rational,
     duration: i64,
 
     producer: Option<HeapProd<FrameImage>>,
@@ -51,33 +51,29 @@ pub struct VideoDecoder {
 
     event: Arc<Mutex<DecoderEvent>>,
     condvar: Arc<Condvar>,
-
-    seek_to: Option<i64>,
 }
 
 impl VideoDecoder {
-    /// Create a new Decoder
-    pub fn new(size_entity: Entity<PlayerSize>, output_prarms: Entity<OutputParams>) -> Self {
-        Self {
-            input: None,
-            video_stream_ix: 0,
-            audio_stream_ix: 0,
-            decoder: None,
-            code_parms: codec::Parameters::new(),
-            time_base: None,
-            frames: 0,
-            duration: 0,
+    // /// Create a new Decoder
+    // pub fn new(size_entity: Entity<PlayerSize>, output_prarms: Entity<OutputParams>) -> Self {
+    //     Self {
+    //         input: None,
+    //         video_stream_ix: 0,
+    //         audio_stream_ix: 0,
+    //         decoder: None,
+    //         code_parms: codec::Parameters::new(),
+    //         time_base: None,
+    //         frames: 0,
+    //         duration: 0,
 
-            producer: None,
-            size: size_entity,
-            output_prarms,
+    //         producer: None,
+    //         size: size_entity,
+    //         output_prarms,
 
-            event: Arc::new(Mutex::new(DecoderEvent::None)),
-            condvar: Arc::new(Condvar::new()),
-
-            seek_to: None,
-        }
-    }
+    //         event: Arc::new(Mutex::new(DecoderEvent::None)),
+    //         condvar: Arc::new(Condvar::new()),
+    //     }
+    // }
 
     /// set producer of ringbuf in VideoDecoder
     pub fn set_producer(mut self, p: HeapProd<FrameImage>) -> Self {
@@ -93,7 +89,7 @@ impl VideoDecoder {
     }
 
     /// get video timebase
-    pub fn get_timebase(&self) -> Option<Rational> {
+    pub fn get_timebase(&self) -> Rational {
         self.time_base
     }
 
@@ -105,63 +101,73 @@ impl VideoDecoder {
     }
 
     /// open a video file
-    pub fn open<T>(&mut self, cx: &mut Context<T>, path: &PathBuf) -> anyhow::Result<()>
+    pub fn open<T>(
+        cx: &mut Context<T>,
+        path: &PathBuf,
+        size: Entity<PlayerSize>,
+        output_prarms: Entity<OutputParams>,
+    ) -> anyhow::Result<Self>
     where
         T: 'static,
     {
         let i = ffmpeg_next::format::input(path)?;
 
-        let stream = i
+        let v_stream = i
             .streams()
             .best(ffmpeg_next::media::Type::Video)
-            .ok_or(anyhow!("failed to find video stream"))?;
+            .ok_or(anyhow!("failed to find best video stream"))?;
 
-        let audio = i
+        let a_stream = i
             .streams()
             .best(ffmpeg_next::media::Type::Audio)
             .ok_or(anyhow!("failed to find video stream"))?;
 
-        let decoder = ffmpeg_next::codec::context::Context::from_parameters(stream.parameters())?
+        let decoder = ffmpeg_next::codec::context::Context::from_parameters(v_stream.parameters())?
             .decoder()
             .video()?;
 
-        let time_base = stream.time_base();
+        let audio_decoder =
+            ffmpeg_next::codec::context::Context::from_parameters(a_stream.parameters())?
+                .decoder()
+                .audio()?;
 
-        let parmters = stream.parameters();
+        let time_base = v_stream.time_base();
+
         // get sample rate and length of video frams
-        let frame_rate = stream.avg_frame_rate();
-        let frames = stream.frames();
-        let duration = stream.duration();
+        let frame_rate = v_stream.avg_frame_rate();
+        let duration = v_stream.duration();
         // get orignal video size
         let orignal_width = decoder.width();
         let orignal_height = decoder.height();
 
-        println!(
-            "DEBUG: frame rate: {}, duration: {} frames: {}",
-            frame_rate, duration, frames
-        );
+        println!("DEBUG: frame rate: {}, duration: {}", frame_rate, duration);
 
-        self.video_stream_ix = stream.index();
-        self.audio_stream_ix = audio.index();
-        self.input = Some(i);
-        self.decoder = Some(decoder);
-        self.code_parms = parmters;
-        self.time_base = Some(time_base);
-        self.frames = frames;
-        self.duration = duration;
-
-        self.size.update(cx, |s, _| {
+        size.update(cx, |s, _| {
             s.set_orignal((orignal_width, orignal_height));
         });
 
         // update related output params
-        self.output_prarms.update(cx, |p, _| {
+        output_prarms.update(cx, |p, _| {
             p.path = Some(path.clone());
-            p.video_stream_ix = Some(self.video_stream_ix);
-            p.audio_stream_ix = Some(self.audio_stream_ix);
+            p.video_stream_ix = Some(v_stream.index());
+            p.audio_stream_ix = Some(a_stream.index());
         });
 
-        Ok(())
+        Ok(Self {
+            video_stream_ix: v_stream.index(),
+            audio_stream_ix: a_stream.index(),
+            v_decoder: Some(decoder),
+            a_decoder: Some(audio_decoder),
+            time_base,
+            duration,
+            producer: None,
+            size,
+            output_prarms,
+            input: Some(i),
+
+            event: Arc::new(Mutex::new(DecoderEvent::None)),
+            condvar: Arc::new(Condvar::new()),
+        })
     }
 
     /// spawn decoder thread
@@ -169,15 +175,14 @@ impl VideoDecoder {
         let Some(mut input) = self.input.take() else {
             return;
         };
-        let Some(mut decoder) = self.decoder.take() else {
+        let Some(mut decoder) = self.v_decoder.take() else {
             return;
         };
         let Some(mut producer) = self.producer.take() else {
             return;
         };
-        let Some(time_base) = self.time_base else {
-            return;
-        };
+
+        let time_base = self.time_base;
 
         let orignal_size = size.read(cx).orignal_size();
 
