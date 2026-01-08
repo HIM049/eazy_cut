@@ -20,3 +20,4 @@ a tiny video edit tool for make clips fast and eazy.
   - [x] seek fix
   - [ ] multiple audio stream
   - [ ] multiple audio stream mix
+  - [ ] freshrate resample 
