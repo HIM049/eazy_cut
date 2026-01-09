@@ -52,7 +52,7 @@ pub struct VideoDecoder {
     device_sample_rate: u32,
 
     v_producer: Option<HeapProd<FrameImage>>,
-    a_producer: Option<HeapProd<FrameAudio>>,
+    a_producer: Option<HeapProd<f32>>,
     size: Entity<PlayerSize>,
     output_prarms: Entity<OutputParams>,
 
@@ -88,7 +88,7 @@ impl VideoDecoder {
         self
     }
 
-    pub fn set_audio_producer(mut self, p: HeapProd<FrameAudio>) -> Self {
+    pub fn set_audio_producer(mut self, p: HeapProd<f32>) -> Self {
         self.a_producer = Some(p);
         self
     }
@@ -242,6 +242,7 @@ impl VideoDecoder {
             // frame buffer
             let mut frame_buf: Option<FrameImage> = None;
             let mut a_frame_buf: Option<FrameAudio> = None;
+            let mut leftover_sample: Option<Vec<f32>> = None;
             // frame varible
             let mut decoded_frame = ffmpeg_next::frame::Video::new(v_decoder.format(), w, h);
             let mut scaled_frame = ffmpeg_next::frame::Video::new(format::Pixel::BGRA, w, h);
@@ -274,7 +275,7 @@ impl VideoDecoder {
                 }
 
                 let mut buffer = Vec::with_capacity((w * h * 4) as usize);
-                if frame_buf.is_none() {
+                if frame_buf.is_none() || a_frame_buf.is_none() {
                     // read packets
                     if let Some((stream, packet)) = input.packets().next() {
                         if stream.index() == video_ix {
@@ -290,53 +291,53 @@ impl VideoDecoder {
                             }
                         }
                     } else {
+                        // file end
                         break;
                     };
-
-                    // try receive decoder
-                    if v_decoder.receive_frame(&mut decoded_frame).is_ok() {
-                        // drop extra frames when seek
-                        if let Some(to) = seek_to {
-                            let target = (to * time_base.denominator() as f32) as i64;
-                            if decoded_frame.pts().unwrap_or(0) < target {
-                                continue;
-                            } else {
-                                seek_to = None;
-                            }
+                }
+                // try receive decoder
+                if v_decoder.receive_frame(&mut decoded_frame).is_ok() {
+                    // drop extra frames when seek
+                    if let Some(to) = seek_to {
+                        let target = (to * time_base.denominator() as f32) as i64;
+                        if decoded_frame.pts().unwrap_or(0) < target {
+                            continue;
+                        } else {
+                            seek_to = None;
                         }
-                        // convert frame
-                        scaler.run(&decoded_frame, &mut scaled_frame).unwrap();
+                    }
+                    // convert frame
+                    scaler.run(&decoded_frame, &mut scaled_frame).unwrap();
 
-                        let data = scaled_frame.data(0);
-                        let stride = scaled_frame.stride(0);
+                    let data = scaled_frame.data(0);
+                    let stride = scaled_frame.stride(0);
 
-                        for y in 0..h as usize {
-                            let start = y * stride;
-                            let end = start + (w as usize * 4);
-                            buffer.extend_from_slice(&data[start..end]);
-                        }
-
-                        frame_buf = Some(FrameImage {
-                            image: generate_image_fallback(orignal_size, buffer),
-                            pts: decoded_frame.pts().unwrap_or(0),
-                        });
+                    for y in 0..h as usize {
+                        let start = y * stride;
+                        let end = start + (w as usize * 4);
+                        buffer.extend_from_slice(&data[start..end]);
                     }
 
-                    if a_decoder.receive_frame(&mut decoded_audio).is_ok() {
-                        resampler.run(&decoded_audio, &mut resampled_audio).unwrap();
+                    frame_buf = Some(FrameImage {
+                        image: generate_image_fallback(orignal_size, buffer),
+                        pts: decoded_frame.pts().unwrap_or(0),
+                    });
+                }
 
-                        let raw_samples: &[f32] = unsafe {
-                            std::slice::from_raw_parts(
-                                resampled_audio.data(0).as_ptr() as *const f32,
-                                resampled_audio.samples() * resampled_audio.channels() as usize,
-                            )
-                        };
+                if a_decoder.receive_frame(&mut decoded_audio).is_ok() {
+                    resampler.run(&decoded_audio, &mut resampled_audio).unwrap();
 
-                        a_frame_buf = Some(FrameAudio {
-                            sample: Arc::new(raw_samples.to_vec()),
-                            pts: decoded_audio.pts().unwrap(),
-                        });
-                    }
+                    let raw_samples: &[f32] = unsafe {
+                        std::slice::from_raw_parts(
+                            resampled_audio.data(0).as_ptr() as *const f32,
+                            resampled_audio.samples() * resampled_audio.channels() as usize,
+                        )
+                    };
+
+                    a_frame_buf = Some(FrameAudio {
+                        sample: Arc::new(raw_samples.to_vec()),
+                        pts: decoded_audio.pts().unwrap(),
+                    });
                 }
 
                 if v_producer.is_full() && a_producer.is_full() {
@@ -350,10 +351,19 @@ impl VideoDecoder {
                 }
 
                 // TODO: could make delay ?
-                if let Some(f) = a_frame_buf.take() {
-                    if let Err(f) = a_producer.try_push(f) {
-                        a_frame_buf = Some(f);
+                let mut next_sample = Arc::new(vec![]);
+                if let Some(s) = leftover_sample.take() {
+                    next_sample = Arc::new(s);
+                } else {
+                    if let Some(f) = a_frame_buf.take() {
+                        next_sample = f.sample.clone();
                     }
+                }
+
+                let written = a_producer.push_slice(&next_sample);
+                if written < next_sample.len() {
+                    let remaining_slice = &next_sample[written..];
+                    leftover_sample = Some(remaining_slice.to_vec())
                 }
             }
         });

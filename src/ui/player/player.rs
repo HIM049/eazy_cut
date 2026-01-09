@@ -37,7 +37,7 @@ pub struct Player {
     frame: Arc<RenderImage>,
     frame_buf: Option<FrameImage>,
     producer: Option<HeapProd<FrameImage>>,
-    a_producer: Option<HeapProd<FrameAudio>>,
+    a_producer: Option<HeapProd<f32>>,
     consumer: HeapCons<FrameImage>,
     start_time: Option<Instant>,
     played_time: Option<f32>,
@@ -55,10 +55,11 @@ impl Player {
         let rb = ringbuf::SharedRb::<Heap<FrameImage>>::new(30 * 1);
         let (v_producer, v_consumer) = rb.split();
 
-        let rb = ringbuf::SharedRb::<Heap<FrameAudio>>::new(30 * 1);
+        let mut audio_player = AudioPlayer::new().unwrap();
+        let rb = ringbuf::SharedRb::<Heap<f32>>::new(audio_player.sample_rate() as usize * 1);
         let (a_producer, a_consumer) = rb.split();
 
-        let audio_player = AudioPlayer::new().unwrap().spawn(a_consumer);
+        audio_player.spawn(a_consumer);
 
         Self {
             init: false,
