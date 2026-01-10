@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     path::PathBuf,
     sync::{Arc, Condvar, Mutex},
     thread,
@@ -7,7 +8,7 @@ use std::{
 
 use anyhow::anyhow;
 use ffmpeg_next::{
-    Rational,
+    Packet, Rational,
     decoder::{self},
     format::{self, context, sample::Type},
     software::{
@@ -240,9 +241,12 @@ impl VideoDecoder {
             .unwrap();
 
             // frame buffer
-            let mut frame_buf: Option<FrameImage> = None;
+            let mut v_frame_buf: Option<FrameImage> = None;
             let mut a_frame_buf: Option<FrameAudio> = None;
             let mut leftover_sample: Option<Vec<f32>> = None;
+
+            let mut video_pkt_queue: VecDeque<Packet> = VecDeque::new();
+            let mut audio_pkt_queue: VecDeque<Packet> = VecDeque::new();
             // frame varible
             let mut decoded_frame = ffmpeg_next::frame::Video::new(v_decoder.format(), w, h);
             let mut scaled_frame = ffmpeg_next::frame::Video::new(format::Pixel::BGRA, w, h);
@@ -250,6 +254,7 @@ impl VideoDecoder {
             let mut resampled_audio = ffmpeg_next::frame::Audio::empty();
 
             let mut seek_to: Option<f32> = None;
+            let mut finish = false;
             loop {
                 {
                     // handle decoder event
@@ -274,29 +279,44 @@ impl VideoDecoder {
                     *event = DecoderEvent::None;
                 }
 
-                let mut buffer = Vec::with_capacity((w * h * 4) as usize);
-                if frame_buf.is_none() || a_frame_buf.is_none() {
+                // if no enough pkts, read from file
+                while !finish && (video_pkt_queue.len() < 50 || audio_pkt_queue.len() < 100) {
                     // read packets
                     if let Some((stream, packet)) = input.packets().next() {
                         if stream.index() == video_ix {
-                            // try to send packet to decoder
-                            if v_decoder.send_packet(&packet).is_err() {
-                                println!("DEBUG: error when send video packet");
-                                break;
-                            }
+                            video_pkt_queue.push_back(packet);
                         } else if stream.index() == audio_ix {
-                            if a_decoder.send_packet(&packet).is_err() {
-                                println!("DEBUG: error when send audio packet");
-                                break;
-                            }
+                            audio_pkt_queue.push_back(packet);
                         }
                     } else {
-                        // file end
-                        break;
-                    };
+                        finish = true;
+                    }
                 }
-                // try receive decoder
-                if v_decoder.receive_frame(&mut decoded_frame).is_ok() {
+
+                println!(
+                    "DEBUG: VP{}, AP{}, PTS_V: {}, PTS_A: {}",
+                    video_pkt_queue.len(),
+                    audio_pkt_queue.len(),
+                    v_frame_buf.as_ref().map(|f| f.pts).unwrap_or(0),
+                    a_frame_buf.as_ref().map(|f| f.pts).unwrap_or(0)
+                );
+
+                // push if some video packet
+                if let Some(p) = video_pkt_queue.pop_front() {
+                    if v_decoder.send_packet(&p).is_err() {
+                        video_pkt_queue.push_front(p);
+                    }
+                }
+
+                // push if some audio packet
+                if let Some(p) = audio_pkt_queue.pop_front() {
+                    if a_decoder.send_packet(&p).is_err() {
+                        audio_pkt_queue.push_front(p);
+                    }
+                }
+
+                // try receive decoded frame and push
+                if v_frame_buf.is_none() && v_decoder.receive_frame(&mut decoded_frame).is_ok() {
                     // drop extra frames when seek
                     if let Some(to) = seek_to {
                         let target = (to * time_base.denominator() as f32) as i64;
@@ -312,19 +332,21 @@ impl VideoDecoder {
                     let data = scaled_frame.data(0);
                     let stride = scaled_frame.stride(0);
 
+                    let mut buffer = Vec::with_capacity((w * h * 4) as usize);
                     for y in 0..h as usize {
                         let start = y * stride;
                         let end = start + (w as usize * 4);
                         buffer.extend_from_slice(&data[start..end]);
                     }
 
-                    frame_buf = Some(FrameImage {
+                    v_frame_buf = Some(FrameImage {
                         image: generate_image_fallback(orignal_size, buffer),
                         pts: decoded_frame.pts().unwrap_or(0),
                     });
                 }
 
-                if a_decoder.receive_frame(&mut decoded_audio).is_ok() {
+                // try receive audio frame and push
+                if a_frame_buf.is_none() && a_decoder.receive_frame(&mut decoded_audio).is_ok() {
                     resampler.run(&decoded_audio, &mut resampled_audio).unwrap();
 
                     let raw_samples: &[f32] = unsafe {
@@ -344,9 +366,9 @@ impl VideoDecoder {
                     thread::sleep(Duration::from_millis(10));
                 }
 
-                if let Some(f) = frame_buf.take() {
+                if let Some(f) = v_frame_buf.take() {
                     if let Err(f) = v_producer.try_push(f) {
-                        frame_buf = Some(f);
+                        v_frame_buf = Some(f);
                     }
                 }
 

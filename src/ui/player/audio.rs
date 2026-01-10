@@ -76,15 +76,15 @@ impl AudioPlayer {
                         *sample = 0.0;
                     }
 
-                    let o_len = consumer.occupied_len();
-                    if o_len != 0 {
-                        println!(
-                            "DEBUG: audio buffer occupied_len {}, capacity {}, pct {:.2}",
-                            o_len,
-                            consumer.capacity().get(),
-                            o_len as f32 / consumer.capacity().get() as f32
-                        );
-                    }
+                    // let o_len = consumer.occupied_len();
+                    // if o_len != 0 {
+                    //     println!(
+                    //         "DEBUG: audio buffer occupied_len {}, capacity {}, pct {:.2}",
+                    //         o_len,
+                    //         consumer.capacity().get(),
+                    //         o_len as f32 / consumer.capacity().get() as f32
+                    //     );
+                    // }
 
                     // if let Some(f) = consumer.try_pop() {
                     //     if data.len() != f.sample.len() {}
