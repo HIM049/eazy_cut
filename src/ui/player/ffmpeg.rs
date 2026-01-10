@@ -25,11 +25,7 @@ use ringbuf::{
 use crate::{
     models::model::OutputParams,
     ui::{
-        player::{
-            frame::{FrameAudio, FrameImage},
-            size::PlayerSize,
-            utils::generate_image_fallback,
-        },
+        player::{frame::FrameImage, size::PlayerSize, utils::generate_image_fallback},
         views::app::MyApp,
     },
 };
@@ -54,35 +50,13 @@ pub struct VideoDecoder {
 
     v_producer: Option<HeapProd<FrameImage>>,
     a_producer: Option<HeapProd<f32>>,
-    size: Entity<PlayerSize>,
-    output_prarms: Entity<OutputParams>,
-
+    // size: Entity<PlayerSize>,
+    // output_prarms: Entity<OutputParams>,
     event: Arc<Mutex<DecoderEvent>>,
     condvar: Arc<Condvar>,
 }
 
 impl VideoDecoder {
-    // /// Create a new Decoder
-    // pub fn new(size_entity: Entity<PlayerSize>, output_prarms: Entity<OutputParams>) -> Self {
-    //     Self {
-    //         input: None,
-    //         video_stream_ix: 0,
-    //         audio_stream_ix: 0,
-    //         decoder: None,
-    //         code_parms: codec::Parameters::new(),
-    //         time_base: None,
-    //         frames: 0,
-    //         duration: 0,
-
-    //         producer: None,
-    //         size: size_entity,
-    //         output_prarms,
-
-    //         event: Arc::new(Mutex::new(DecoderEvent::None)),
-    //         condvar: Arc::new(Condvar::new()),
-    //     }
-    // }
-
     /// set producer of ringbuf in VideoDecoder
     pub fn set_video_producer(mut self, p: HeapProd<FrameImage>) -> Self {
         self.v_producer = Some(p);
@@ -176,8 +150,8 @@ impl VideoDecoder {
             duration,
             v_producer: None,
             a_producer: None,
-            size,
-            output_prarms,
+            // size,
+            // output_prarms,
             input: Some(i),
 
             device_sample_rate: sample_rate,
@@ -244,9 +218,7 @@ impl VideoDecoder {
 
             // frame buffer
             let mut next_video_frame: Option<FrameImage> = None;
-            // let mut a_frame_buf: Option<FrameAudio> = None;
             let mut next_audio_sample: Option<Vec<f32>> = None;
-            // let mut leftover_sample: Option<Vec<f32>> = None;
 
             let mut video_pkt_queue: VecDeque<Packet> = VecDeque::new();
             let mut audio_pkt_queue: VecDeque<Packet> = VecDeque::new();
@@ -257,7 +229,7 @@ impl VideoDecoder {
             let mut resampled_audio = ffmpeg_next::frame::Audio::empty();
 
             let mut seek_to: Option<f32> = None;
-            let mut finish = false;
+            let mut is_read_finished = false;
             loop {
                 {
                     // handle decoder event
@@ -283,7 +255,9 @@ impl VideoDecoder {
                 }
 
                 // if no enough pkts, read from file
-                while !finish && (video_pkt_queue.len() < 50 || audio_pkt_queue.len() < 100) {
+                while !is_read_finished
+                    && (video_pkt_queue.len() < 50 || audio_pkt_queue.len() < 100)
+                {
                     // read packets
                     if let Some((stream, packet)) = input.packets().next() {
                         if stream.index() == video_ix {
@@ -292,23 +266,9 @@ impl VideoDecoder {
                             audio_pkt_queue.push_back(packet);
                         }
                     } else {
-                        finish = true;
-                        println!(
-                            "DEBUG: VP{}, AP{}, PTS_V: {}",
-                            video_pkt_queue.len(),
-                            audio_pkt_queue.len(),
-                            next_video_frame.as_ref().map(|f| f.pts).unwrap_or(0),
-                        );
+                        is_read_finished = true;
                     }
                 }
-
-                // println!(
-                //     "DEBUG: VP{}, AP{}, PTS_V: {}, PTS_A: {}",
-                //     video_pkt_queue.len(),
-                //     audio_pkt_queue.len(),
-                //     v_frame_buf.as_ref().map(|f| f.pts).unwrap_or(0),
-                //     a_frame_buf.as_ref().map(|f| f.pts).unwrap_or(0)
-                // );
 
                 // push if some video packet
                 if let Some(p) = video_pkt_queue.pop_front() {
@@ -355,24 +315,20 @@ impl VideoDecoder {
                     });
                 }
 
-                // try receive audio frame and push
+                // if none ready audio sample
                 if next_audio_sample.is_none() {
                     if a_decoder.receive_frame(&mut decoded_audio).is_ok() {
+                        // try receive audio frame and resample
                         resampler.run(&decoded_audio, &mut resampled_audio).unwrap();
-
-                        // a_frame_buf = Some(FrameAudio {
-                        //     sample: Arc::new(raw_samples.to_vec()),
-                        //     pts: decoded_audio.pts().unwrap(),
-                        // });
                     } else if audio_pkt_queue.len() == 0 {
+                        // queue are clear, release resampler
                         if let Ok(r) = resampler.flush(&mut resampled_audio) {
                             if r.is_none() {
                                 break;
                             }
                         }
                     }
-                    let samples = resampled_audio.samples();
-                    if samples > 0 {
+                    if resampled_audio.samples() > 0 {
                         let raw_samples: &[f32] = unsafe {
                             std::slice::from_raw_parts(
                                 resampled_audio.data(0).as_ptr() as *const f32,
@@ -384,26 +340,24 @@ impl VideoDecoder {
                     }
                 }
 
+                // if ringbuf is full
                 if v_producer.is_full() && a_producer.is_full() {
                     thread::sleep(Duration::from_millis(10));
+                } else if is_read_finished
+                    && next_video_frame.is_none()
+                    && next_audio_sample.is_none()
+                {
+                    break;
                 }
 
+                // push video frame
                 if let Some(f) = next_video_frame.take() {
                     if let Err(f) = v_producer.try_push(f) {
                         next_video_frame = Some(f);
                     }
                 }
 
-                // // TODO: could make delay ?
-                // let mut next_sample = Arc::new(vec![]);
-                // if let Some(s) = leftover_sample.take() {
-                //     next_sample = Arc::new(s);
-                // } else {
-                //     if let Some(f) = a_frame_buf.take() {
-                //         next_sample = f.sample.clone();
-                //     }
-                // }
-
+                // push audio sample
                 if let Some(s) = next_audio_sample.take() {
                     let written = a_producer.push_slice(&s);
                     if written < s.len() {

@@ -13,7 +13,7 @@ use crate::{
         player::{
             audio::AudioPlayer,
             ffmpeg::{DecoderEvent, VideoDecoder},
-            frame::{FrameAction, FrameAudio, FrameImage},
+            frame::{FrameAction, FrameImage},
             size::PlayerSize,
             utils::generate_image_fallback,
             viewer::Viewer,

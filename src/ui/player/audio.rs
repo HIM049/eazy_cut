@@ -3,10 +3,7 @@ use cpal::{
     StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use ringbuf::{
-    HeapCons,
-    traits::{Consumer, Observer},
-};
+use ringbuf::{HeapCons, traits::Consumer};
 
 pub struct AudioPlayer {
     _host: cpal::Host,
@@ -14,8 +11,6 @@ pub struct AudioPlayer {
     config: StreamConfig,
     sample_rate: u32,
     stream: Option<cpal::Stream>,
-
-    stream_buf: Option<Vec<f32>>,
 }
 
 impl AudioPlayer {
@@ -40,7 +35,6 @@ impl AudioPlayer {
             config,
             sample_rate,
             stream: None,
-            stream_buf: None,
         })
     }
 
@@ -75,25 +69,6 @@ impl AudioPlayer {
                     for sample in &mut data[r_lenth..] {
                         *sample = 0.0;
                     }
-
-                    // let o_len = consumer.occupied_len();
-                    // if o_len != 0 {
-                    //     println!(
-                    //         "DEBUG: audio buffer occupied_len {}, capacity {}, pct {:.2}",
-                    //         o_len,
-                    //         consumer.capacity().get(),
-                    //         o_len as f32 / consumer.capacity().get() as f32
-                    //     );
-                    // }
-
-                    // if let Some(f) = consumer.try_pop() {
-                    //     if data.len() != f.sample.len() {}
-                    //     let len = data.len().min(f.sample.len());
-                    //     data[..len].copy_from_slice(&f.sample[..len]);
-                    //     // println!("frame len {}, want len {}", len, data.len());
-                    // } else {
-                    //     data.fill(0.0);
-                    // }
                 },
                 move |err| {
                     println!("error when playing: {}", err);
